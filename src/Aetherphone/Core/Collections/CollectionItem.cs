@@ -5,6 +5,8 @@ namespace Aetherphone.Core.Collections;
 
 internal sealed class CollectionItem
 {
+    private const long GameOrderGroupWeight = 1_000_000L;
+
     public readonly CollectionCategory Category;
     public readonly int Id;
     public readonly uint ItemId;
@@ -26,7 +28,7 @@ internal sealed class CollectionItem
     public readonly int Points;
     public readonly int Stars;
     public readonly int Order;
-    public readonly int GameOrder;
+    public readonly long GameOrder;
     public readonly CollectionStatStrip? Stats;
     public readonly string StatsText;
     public readonly string PointsText;
@@ -34,11 +36,11 @@ internal sealed class CollectionItem
     private string rarityText = string.Empty;
     private string rarityLanguage = string.Empty;
 
-    public CollectionItem(CollectionCategory category, CollectionItemDto dto, int order)
+    public CollectionItem(CollectionCategory category, CollectionItemDto dto, int order, long? gameOrder = null)
     {
         Category = category;
         Order = order;
-        GameOrder = dto.Order ?? int.MaxValue;
+        GameOrder = gameOrder ?? BuildGameOrder(category, dto, order);
         Id = dto.Id;
         ItemId = dto.ItemId is > 0 ? (uint)dto.ItemId.Value : 0u;
         Name = dto.Name ?? string.Empty;
@@ -95,6 +97,16 @@ internal sealed class CollectionItem
 
             return rarityText;
         }
+    }
+
+    private static long BuildGameOrder(CollectionCategory category, CollectionItemDto dto, int responseIndex)
+    {
+        if (category == CollectionCategory.Orchestrions)
+        {
+            return OrchestrionOrder.Key(dto, responseIndex);
+        }
+
+        return dto.Order is { } gameOrder ? (dto.OrderGroup ?? 0) * GameOrderGroupWeight + gameOrder : long.MaxValue;
     }
 
     private static string Digit(int value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);

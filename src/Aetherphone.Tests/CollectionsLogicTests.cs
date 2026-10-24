@@ -12,6 +12,36 @@ public sealed class CollectionsLogicTests
         return new CollectionItem(CollectionCategory.Facewear, dto, id);
     }
 
+    private static CollectionItem Mount(int id, string name, int orderGroup, int gameOrder)
+    {
+        var dto = new CollectionItemDto { Id = id, Name = name, Order = gameOrder, OrderGroup = orderGroup };
+        return new CollectionItem(CollectionCategory.Mounts, dto, id);
+    }
+
+    private static CollectionItem Roll(int id, string name, int categoryId, string number)
+    {
+        var dto = new CollectionItemDto
+        {
+            Id = id,
+            Name = name,
+            Category = new CollectionGroupRef { Id = categoryId },
+            Number = number,
+        };
+        return new CollectionItem(CollectionCategory.Orchestrions, dto, id);
+    }
+
+    private static CollectionItem Minion(int id, string name, long gameOrder)
+    {
+        var dto = new CollectionItemDto { Id = id, Name = name };
+        return new CollectionItem(CollectionCategory.Minions, dto, id, gameOrder);
+    }
+
+    private static CollectionItem Card(int id, string name, int gameOrder, int orderGroup)
+    {
+        var dto = new CollectionItemDto { Id = id, Name = name, Order = gameOrder, OrderGroup = orderGroup };
+        return new CollectionItem(CollectionCategory.TriadCards, dto, id);
+    }
+
     private static CollectionItem Item(int id, string name, string? owned = null, string patch = "",
         params string[] sourceTypes)
     {
@@ -143,20 +173,100 @@ public sealed class CollectionsLogicTests
     }
 
     [Fact]
+    public void GameOrderPutsCrossoverCardsAfterTheNumberedCards()
+    {
+        var items = new[]
+        {
+            Card(1, "Warrior of Light", 1, 5),
+            Card(2, "Tonberry", 2, 0),
+            Card(3, "Dodo", 1, 0),
+            Card(4, "Clive Rosfield", 15, 5),
+            Card(5, "Promathia", 460, 0),
+        };
+        var output = new List<CollectionItem>();
+
+        CollectionFilter.Apply(items, output, string.Empty, OwnershipFilter.All, string.Empty, null,
+            CollectionSort.GameOrder);
+
+        Assert.Equal(new[] { 3, 2, 5, 1, 4 }, output.ConvertAll(item => item.Id));
+    }
+
+    [Fact]
+    public void MountGameOrderFollowsTheMountGuideByOrderGroupThenOrder()
+    {
+        var items = new[]
+        {
+            Mount(1, "Rhiyes", 40900, 268),
+            Mount(2, "Magitek Armor", 10000, 3),
+            Mount(3, "Company Chocobo", 100, 0),
+            Mount(4, "Midgardsormr", 35000, 35),
+            Mount(5, "Draught Chocobo", 200, 21),
+            Mount(6, "Black Chocobo", 102, 40),
+        };
+        var output = new List<CollectionItem>();
+
+        CollectionFilter.Apply(items, output, string.Empty, OwnershipFilter.All, string.Empty, null,
+            CollectionSort.GameOrder);
+
+        Assert.Equal(new[] { 3, 6, 5, 2, 4, 1 }, output.ConvertAll(item => item.Id));
+    }
+
+    [Fact]
+    public void OrchestrionGameOrderFollowsTheTabOrderThenTheRollNumber()
+    {
+        var items = new[]
+        {
+            Roll(1, "Pulper of Inquiry", 13, "086"),
+            Roll(2, "Zanarkand (Modulation)", 7, "�"),
+            Roll(3, "Wailers and Waterwheels", 2, "001"),
+            Roll(4, "Indulgence", 9, "002"),
+            Roll(5, "From the Depths", 3, "001"),
+            Roll(6, "Born to Ride", 6, "001"),
+            Roll(7, "A New Hope", 2, "003"),
+        };
+        var output = new List<CollectionItem>();
+
+        CollectionFilter.Apply(items, output, string.Empty, OwnershipFilter.All, string.Empty, null,
+            CollectionSort.GameOrder);
+
+        Assert.Equal(new[] { 3, 7, 4, 5, 1, 6, 2 }, output.ConvertAll(item => item.Id));
+    }
+
+    [Fact]
+    public void MinionGameOrderSortsByCompanionOrderThenRowId()
+    {
+        var items = new[]
+        {
+            Minion(1, "Cherry Bomb", MinionOrder.Key(1001, 1)),
+            Minion(2, "Black Chocobo Chick", MinionOrder.Key(5, 20)),
+            Minion(3, "Wayward Hatchling", MinionOrder.Key(1, 3)),
+            Minion(4, "Chocobo Chick Courier", MinionOrder.Key(5, 10)),
+            Minion(5, "Pegwin", MinionOrder.Key(60001, 500)),
+        };
+        var output = new List<CollectionItem>();
+
+        CollectionFilter.Apply(items, output, string.Empty, OwnershipFilter.All, string.Empty, null,
+            CollectionSort.GameOrder);
+
+        Assert.Equal(new[] { 3, 4, 2, 1, 5 }, output.ConvertAll(item => item.Id));
+    }
+
+    [Fact]
     public void CatalogOrderFieldSurvivesTheDiskCacheRoundTrip()
     {
-        var json = "{\"count\":2,\"results\":[{\"id\":1,\"order\":7},{\"id\":2}]}";
+        var json = "{\"count\":2,\"results\":[{\"id\":1,\"order\":7,\"order_group\":5},{\"id\":2}]}";
 
         var response = JsonSerializer.Deserialize(json, CollectionJsonContext.Default.CollectionResponse)!;
         var cached = JsonSerializer.SerializeToUtf8Bytes(response, CollectionJsonContext.Default.CollectionResponse);
         var restored = JsonSerializer.Deserialize(cached, CollectionJsonContext.Default.CollectionResponse)!;
 
         Assert.Equal(7, restored.Results![0].Order);
+        Assert.Equal(5, restored.Results[0].OrderGroup);
         Assert.Null(restored.Results[1].Order);
     }
 
     [Fact]
-    public void OnlyFacewearOffersGameOrder()
+    public void OnlyVerifiedCategoriesOfferGameOrder()
     {
         for (var index = 0; index < CollectionCategories.All.Length; index++)
         {
@@ -165,7 +275,10 @@ public sealed class CollectionsLogicTests
 
             Assert.InRange(options.Length, 1, CollectionFilter.SortCount);
             Assert.Equal(CollectionSort.Newest, options[0]);
-            Assert.Equal(category == CollectionCategory.Facewear, Array.IndexOf(options, CollectionSort.GameOrder) >= 0);
+            var verified = category is CollectionCategory.Facewear or CollectionCategory.Mounts
+                or CollectionCategory.Minions or CollectionCategory.Emotes or CollectionCategory.Orchestrions
+                or CollectionCategory.TriadCards;
+            Assert.Equal(verified, Array.IndexOf(options, CollectionSort.GameOrder) >= 0);
         }
     }
 

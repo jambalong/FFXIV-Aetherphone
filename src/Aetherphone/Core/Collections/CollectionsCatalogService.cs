@@ -312,7 +312,7 @@ internal sealed class CollectionsCatalogService : IDisposable
         {
             var token = cancellation.Token;
             var path = CollectionCategories.CatalogPath(category);
-            var cacheKey = string.Concat("collect:catalog:v3:", path);
+            var cacheKey = string.Concat("collect:catalog:v5:", path);
             var cached = disk.Get(cacheKey, CatalogFreshFor);
             CollectionResponse? response;
 
@@ -725,16 +725,47 @@ internal sealed class CollectionsCatalogService : IDisposable
         };
     }
 
-    private static CollectionItem[] Build(CollectionCategory category, CollectionItemDto[] results)
+    private CollectionItem[] Build(CollectionCategory category, CollectionItemDto[] results)
     {
         var items = new CollectionItem[results.Length];
+        var companionOrders = category == CollectionCategory.Minions ? ReadCompanionOrders() : null;
 
         for (var index = 0; index < results.Length; index++)
         {
-            items[index] = new CollectionItem(category, results[index], index);
+            long? gameOrder = null;
+            if (companionOrders is not null && companionOrders.TryGetValue(results[index].Id, out var companionKey))
+            {
+                gameOrder = companionKey;
+            }
+
+            items[index] = new CollectionItem(category, results[index], index, gameOrder);
         }
 
         return items;
+    }
+
+    private Dictionary<int, long>? ReadCompanionOrders()
+    {
+        if (!GameSheets.Available)
+        {
+            return null;
+        }
+
+        try
+        {
+            var orders = new Dictionary<int, long>();
+            foreach (var row in dataManager.GetExcelSheet<Companion>())
+            {
+                orders[(int)row.RowId] = MinionOrder.Key(row.Order, (int)row.RowId);
+            }
+
+            return orders;
+        }
+        catch (Exception exception)
+        {
+            AepLog.Warning(exception, "Collections minion order read failed");
+            return null;
+        }
     }
 
     private static byte[] Serialize(CollectionResponse response) =>
