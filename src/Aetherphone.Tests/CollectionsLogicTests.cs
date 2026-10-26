@@ -18,16 +18,10 @@ public sealed class CollectionsLogicTests
         return new CollectionItem(CollectionCategory.Mounts, dto, id);
     }
 
-    private static CollectionItem Roll(int id, string name, int categoryId, string number)
+    private static CollectionItem Roll(int id, string name, int categoryOrder, string number)
     {
-        var dto = new CollectionItemDto
-        {
-            Id = id,
-            Name = name,
-            Category = new CollectionGroupRef { Id = categoryId },
-            Number = number,
-        };
-        return new CollectionItem(CollectionCategory.Orchestrions, dto, id);
+        var dto = new CollectionItemDto { Id = id, Name = name, Number = number };
+        return new CollectionItem(CollectionCategory.Orchestrions, dto, 0, OrchestrionOrder.Key(dto, categoryOrder));
     }
 
     private static CollectionItem Minion(int id, string name, long gameOrder)
@@ -212,24 +206,27 @@ public sealed class CollectionsLogicTests
     }
 
     [Fact]
-    public void OrchestrionGameOrderFollowsTheTabOrderThenTheRollNumber()
+    public void OrchestrionGameOrderFollowsTheTabOrderThenTheRollNumberThenTheRowIdForUnnumberedRolls()
     {
         var items = new[]
         {
-            Roll(1, "Pulper of Inquiry", 13, "086"),
-            Roll(2, "Zanarkand (Modulation)", 7, "�"),
-            Roll(3, "Wailers and Waterwheels", 2, "001"),
-            Roll(4, "Indulgence", 9, "002"),
-            Roll(5, "From the Depths", 3, "001"),
-            Roll(6, "Born to Ride", 6, "001"),
-            Roll(7, "A New Hope", 2, "003"),
+            Roll(100, "Pulper of Inquiry", 51, "086"),
+            Roll(867, "Zanarkand (Modulation)", 61, "�"),
+            Roll(1, "Wailers and Waterwheels", 1, "001"),
+            Roll(865, "Matoya's Cave (Modulation)", 61, "�"),
+            Roll(3, "Indulgence", 2, "002"),
+            Roll(4, "From the Depths", 11, "001"),
+            Roll(657, "Everybody Falls (Fall Guys Theme)", 61, "�"),
+            Roll(5, "Born to Ride", 52, "001"),
+            Roll(2, "A New Hope", 1, "003"),
+            Roll(866, "Eternal Wind (Modulation)", 61, "�"),
         };
         var output = new List<CollectionItem>();
 
         CollectionFilter.Apply(items, output, string.Empty, OwnershipFilter.All, string.Empty, null,
             CollectionSort.GameOrder);
 
-        Assert.Equal(new[] { 3, 7, 4, 5, 1, 6, 2 }, output.ConvertAll(item => item.Id));
+        Assert.Equal(new[] { 1, 2, 3, 4, 100, 5, 657, 865, 866, 867 }, output.ConvertAll(item => item.Id));
     }
 
     [Fact]
@@ -237,11 +234,11 @@ public sealed class CollectionsLogicTests
     {
         var items = new[]
         {
-            Minion(1, "Cherry Bomb", MinionOrder.Key(1001, 1)),
-            Minion(2, "Black Chocobo Chick", MinionOrder.Key(5, 20)),
-            Minion(3, "Wayward Hatchling", MinionOrder.Key(1, 3)),
-            Minion(4, "Chocobo Chick Courier", MinionOrder.Key(5, 10)),
-            Minion(5, "Pegwin", MinionOrder.Key(60001, 500)),
+            Minion(1, "Cherry Bomb", GameOrderKey.Of(1001, 1)),
+            Minion(2, "Black Chocobo Chick", GameOrderKey.Of(5, 20)),
+            Minion(3, "Wayward Hatchling", GameOrderKey.Of(1, 3)),
+            Minion(4, "Chocobo Chick Courier", GameOrderKey.Of(5, 10)),
+            Minion(5, "Pegwin", GameOrderKey.Of(60001, 500)),
         };
         var output = new List<CollectionItem>();
 

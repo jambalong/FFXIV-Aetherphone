@@ -5,8 +5,6 @@ namespace Aetherphone.Core.Collections;
 
 internal sealed class CollectionItem
 {
-    private const long GameOrderGroupWeight = 1_000_000L;
-
     public readonly CollectionCategory Category;
     public readonly int Id;
     public readonly uint ItemId;
@@ -40,7 +38,9 @@ internal sealed class CollectionItem
     {
         Category = category;
         Order = order;
-        GameOrder = gameOrder ?? BuildGameOrder(category, dto, order);
+        GameOrder = gameOrder ?? (dto.Order is { } catalogOrder
+            ? GameOrderKey.Of(dto.OrderGroup ?? 0, catalogOrder)
+            : long.MaxValue);
         Id = dto.Id;
         ItemId = dto.ItemId is > 0 ? (uint)dto.ItemId.Value : 0u;
         Name = dto.Name ?? string.Empty;
@@ -97,16 +97,6 @@ internal sealed class CollectionItem
 
             return rarityText;
         }
-    }
-
-    private static long BuildGameOrder(CollectionCategory category, CollectionItemDto dto, int responseIndex)
-    {
-        if (category == CollectionCategory.Orchestrions)
-        {
-            return OrchestrionOrder.Key(dto, responseIndex);
-        }
-
-        return dto.Order is { } gameOrder ? (dto.OrderGroup ?? 0) * GameOrderGroupWeight + gameOrder : long.MaxValue;
     }
 
     private static string Digit(int value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);

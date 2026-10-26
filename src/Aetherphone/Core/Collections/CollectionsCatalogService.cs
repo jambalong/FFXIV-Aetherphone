@@ -1,6 +1,7 @@
 using Aetherphone.Core.Game;
 using Aetherphone.Core.Net;
 using Dalamud.Plugin.Services;
+using Lumina.Excel;
 using Lumina.Excel.Sheets;
 using System.Collections.Concurrent;
 using System.Text.Json;
@@ -728,23 +729,37 @@ internal sealed class CollectionsCatalogService : IDisposable
     private CollectionItem[] Build(CollectionCategory category, CollectionItemDto[] results)
     {
         var items = new CollectionItem[results.Length];
-        var companionOrders = category == CollectionCategory.Minions ? ReadCompanionOrders() : null;
+        var companions = category == CollectionCategory.Minions ? ReadSheet<Companion>() : null;
+        var orchestrionCategories = category == CollectionCategory.Orchestrions ? ReadSheet<OrchestrionCategory>() : null;
 
         for (var index = 0; index < results.Length; index++)
         {
-            long? gameOrder = null;
-            if (companionOrders is not null && companionOrders.TryGetValue(results[index].Id, out var companionKey))
-            {
-                gameOrder = companionKey;
-            }
-
+            var gameOrder = ReadGameOrder(results[index], companions, orchestrionCategories);
             items[index] = new CollectionItem(category, results[index], index, gameOrder);
         }
 
         return items;
     }
 
-    private Dictionary<int, long>? ReadCompanionOrders()
+    private static long? ReadGameOrder(CollectionItemDto dto, ExcelSheet<Companion>? companions,
+        ExcelSheet<OrchestrionCategory>? orchestrionCategories)
+    {
+        if (companions is not null && companions.TryGetRow((uint)dto.Id, out var companion))
+        {
+            return GameOrderKey.Of(companion.Order, companion.RowId);
+        }
+
+        if (orchestrionCategories is not null && dto.Category is { } group &&
+            orchestrionCategories.TryGetRow((uint)group.Id, out var orchestrionCategory))
+        {
+            return OrchestrionOrder.Key(dto, orchestrionCategory.Order);
+        }
+
+        return null;
+    }
+
+    private ExcelSheet<T>? ReadSheet<T>()
+        where T : struct, IExcelRow<T>
     {
         if (!GameSheets.Available)
         {
@@ -753,17 +768,11 @@ internal sealed class CollectionsCatalogService : IDisposable
 
         try
         {
-            var orders = new Dictionary<int, long>();
-            foreach (var row in dataManager.GetExcelSheet<Companion>())
-            {
-                orders[(int)row.RowId] = MinionOrder.Key(row.Order, (int)row.RowId);
-            }
-
-            return orders;
+            return dataManager.GetExcelSheet<T>();
         }
         catch (Exception exception)
         {
-            AepLog.Warning(exception, "Collections minion order read failed");
+            AepLog.Warning(exception, $"Collections {typeof(T).Name} order read failed");
             return null;
         }
     }
